@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>토스 축제 검색</title>
+  <script type="module" crossorigin src="./index.js"></script>
+  <link rel="stylesheet" crossorigin href="./index.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="title-logo">toss <span style="font-weight: 400; color: var(--color-text-primary);">축제</span></div>
+        </header>
+
+        <section class="search-section">
+            <h1 class="section-title">어떤 축제를<br>찾으시나요?</h1>
+            
+            <div class="form-group">
+                <label for="area-select">지역 선택</label>
+                <select id="area-select" class="input-control">
+                    <option value="">전국</option>
+                    <option value="1" selected>서울</option>
+                    <option value="2">인천</option>
+                    <option value="3">대전</option>
+                    <option value="4">대구</option>
+                    <option value="5">광주</option>
+                    <option value="6">부산</option>
+                    <option value="7">울산</option>
+                    <option value="8">세종</option>
+                    <option value="31">경기</option>
+                    <option value="32">강원</option>
+                    <option value="33">충북</option>
+                    <option value="34">충남</option>
+                    <option value="35">경북</option>
+                    <option value="36">경남</option>
+                    <option value="37">전북</option>
+                    <option value="38">전남</option>
+                    <option value="39">제주</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="date-input">날짜 선택</label>
+                <input type="date" id="date-input" class="input-control">
+            </div>
+
+            <div class="form-group" style="display: flex; gap: 8px;">
+                <button id="search-btn" class="btn-primary" style="flex: 2;">축제 찾아보기</button>
+                <button id="nearby-btn" class="btn-secondary" style="flex: 1; margin-top: 8px;">내 주변</button>
+            </div>
+        </section>
+
+        <section class="result-section">
+            <h3 id="result-count" class="section-title">축제 목록</h3>
+            
+            <div id="loading" class="loading-spinner">
+                <div class="spinner"></div>
+                <p>축제 정보를 가져오고 있어요</p>
+            </div>
+
+            <div id="festival-list" class="festival-list">
+                <!-- Results will be injected here -->
+                <div class="empty-state">검색 버튼을 눌러 축제를 찾아보세요.</div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detail-modal" class="modal">
+        <div class="modal-header">
+            <button id="close-modal" class="btn-close">✕</button>
+            <h3 style="margin-left: 12px;">축제 상세 정보</h3>
+        </div>
+        <div id="detail-content" class="detail-content">
+            <!-- Detail content will be injected here -->
+        </div>
+    </div>
+
+</body>
+</html>
