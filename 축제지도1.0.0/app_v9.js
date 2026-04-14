@@ -20,6 +20,8 @@ const nearbyBtn = document.getElementById('nearby-btn');
 const loading = document.getElementById('loading');
 const festivalList = document.getElementById('festival-list');
 const resultCount = document.getElementById('result-count');
+const recommendationContainer = document.getElementById('recommendation-container');
+const recommendationList = document.getElementById('recommendation-list');
 const detailModal = document.getElementById('detail-modal');
 const closeModal = document.getElementById('close-modal');
 const detailContent = document.getElementById('detail-content');
@@ -100,6 +102,9 @@ async function initializeApp() {
         
         // Load favorites from local storage (keyed by userKey for future multi-user support)
         loadFavorites();
+
+        // Load Recommended Festivals for the main screen
+        loadRecommendations();
     } catch (error) {
         console.error('Failed to get anonymous key:', error);
         // Fallback or handle error
@@ -155,6 +160,38 @@ function updateFavoriteUI(contentId) {
 
 // Global scope expose for favorites
 window.toggleFavorite = toggleFavorite;
+
+// Recommendation Logic
+async function loadRecommendations() {
+    try {
+        const todayStr = localISOTime.replace(/-/g, '');
+        // Fetch nationwide data to pick recommendations
+        const allFestivals = await fetchList(false, '', todayStr);
+        
+        if (allFestivals && allFestivals.length > 0) {
+            // Pick 10 festivals that have images
+            const recommended = allFestivals
+                .filter(item => item.firstimage)
+                .slice(0, 10);
+            
+            if (recommended.length > 0) {
+                renderRecommendations(recommended);
+                recommendationContainer.style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load recommendations:', error);
+    }
+}
+
+function renderRecommendations(items) {
+    recommendationList.innerHTML = items.map(item => `
+        <div class="recommend-card" onclick="openDetail('${item.contentid}')">
+            <img src="${item.firstimage}" class="recommend-image" alt="${item.title}">
+            <div class="recommend-title">${item.title}</div>
+        </div>
+    `).join('');
+}
 
 // Coordinate conversion (Lat/Lng -> Grid X/Y) for KMA Weather API
 function dfs_xy_conv(code, v1, v2) {
