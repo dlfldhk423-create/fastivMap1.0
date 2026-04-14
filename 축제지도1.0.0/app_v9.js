@@ -1,4 +1,4 @@
-import { toss } from '@apps-in-toss/web-framework';
+import { getAnonymousKey } from '@apps-in-toss/web-framework';
 
 // --- Existing App Logic ---
 
@@ -58,9 +58,8 @@ const ADMIN_CODES = {
 
 // Set default date to today (Local Timezone Fix)
 function getTodayISO() {
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    return (new Date(now.getTime() - offset)).toISOString().slice(0, 10);
+    // Correct local date string (YYYY-MM-DD) across all timezones
+    return new Date().toLocaleDateString('en-CA');
 }
 
 const localISOTime = getTodayISO();
@@ -106,8 +105,8 @@ async function initializeApp() {
     try {
         // Initialize User Identification Key (Anonymous Key)
         // Non-game mini-apps should use getAnonymousKey for consent-less identification
-        const result = await toss.getAnonymousKey();
-        userKey = result.anonymousKey;
+        const result = await getAnonymousKey();
+        userKey = result?.anonymousKey;
         console.log('User identifying key issued:', userKey);
         
         // Load favorites from local storage (keyed by userKey for future multi-user support)
