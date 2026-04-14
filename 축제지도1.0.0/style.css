@@ -402,3 +402,52 @@ select.input-control {
     padding: var(--spacing-xl);
     color: var(--color-text-tertiary);
 }
+
+/* Favorites (찜하기) Styles */
+.festival-card {
+    position: relative; /* For favorite button positioning */
+}
+
+.btn-favorite {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 5;
+    transition: var(--transition-base);
+    font-size: 16px;
+    color: var(--tds-color-gray-300);
+}
+
+.btn-favorite.active {
+    color: #f04452; /* Toss Red-like color for active hearts */
+    transform: scale(1.1);
+}
+
+.btn-favorite:active {
+    transform: scale(0.9);
+}
+
+.detail-favorite-header-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 8px;
+    color: var(--tds-color-gray-300);
+    transition: var(--transition-base);
+}
+
+.detail-favorite-header-btn.active {
+    color: #f04452;
+}

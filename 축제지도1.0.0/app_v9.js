@@ -1,3 +1,5 @@
+import { toss } from '@apps-in-toss/web-framework';
+
 // --- Existing App Logic ---
 
 // Configuration
@@ -5,8 +7,10 @@ const API_KEY = 'd1505c3954d37e35a7ffeeeec74de7fc5b218dfbce9125763c52a4085ce79cf
 const TOUR_BASE_URL = 'https://apis.data.go.kr/B551011/KorService2';
 const WEATHER_BASE_URL = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0';
 
-// Global Map Instance (Removed Leaflet related logic)
+// Global States
 let map = null;
+let userKey = null;
+let favorites = new Set();
 
 // DOM Elements
 const areaSelect = document.getElementById('area-select');
@@ -62,13 +66,15 @@ if (dateInput) {
 // Event Listeners
 function initEventListeners() {
     if (searchBtn) {
-        searchBtn.onclick = () => {
+        searchBtn.onclick = (e) => {
+            if (e) e.preventDefault();
             console.log('Search button clicked');
             searchFestivals(false);
         };
     }
     if (nearbyBtn) {
-        nearbyBtn.onclick = () => {
+        nearbyBtn.onclick = (e) => {
+            if (e) e.preventDefault();
             console.log('Nearby button clicked');
             searchFestivals(true);
         };
@@ -82,7 +88,73 @@ function initEventListeners() {
 }
 
 // Initialize on load
-initEventListeners();
+async function initializeApp() {
+    initEventListeners();
+    
+    try {
+        // Initialize User Identification Key (Anonymous Key)
+        // Non-game mini-apps should use getAnonymousKey for consent-less identification
+        const result = await toss.getAnonymousKey();
+        userKey = result.anonymousKey;
+        console.log('User identifying key issued:', userKey);
+        
+        // Load favorites from local storage (keyed by userKey for future multi-user support)
+        loadFavorites();
+    } catch (error) {
+        console.error('Failed to get anonymous key:', error);
+        // Fallback or handle error
+    }
+}
+
+initializeApp();
+
+// Favorites Logic
+function loadFavorites() {
+    const key = userKey || 'guest';
+    const saved = localStorage.getItem(`fest_fav_${key}`);
+    if (saved) {
+        favorites = new Set(JSON.parse(saved));
+    } else {
+        favorites = new Set();
+    }
+}
+
+function saveFavorites() {
+    const key = userKey || 'guest';
+    localStorage.setItem(`fest_fav_${key}`, JSON.stringify(Array.from(favorites)));
+}
+
+function toggleFavorite(contentId, event) {
+    if (event) event.stopPropagation(); // Prevent opening detail when clicking heart
+    
+    if (favorites.has(contentId)) {
+        favorites.delete(contentId);
+    } else {
+        favorites.add(contentId);
+    }
+    
+    saveFavorites();
+    
+    // Update UI elements that show this status
+    updateFavoriteUI(contentId);
+}
+
+function isFavorite(contentId) {
+    return favorites.has(contentId);
+}
+
+function updateFavoriteUI(contentId) {
+    // Update all hearts in the list
+    const listHearts = document.querySelectorAll(`.btn-favorite[data-id="${contentId}"]`);
+    listHearts.forEach(h => h.classList.toggle('active', isFavorite(contentId)));
+    
+    // Update heart in the detail view if open
+    const detailHeart = document.querySelector(`.detail-favorite-header-btn[data-id="${contentId}"]`);
+    if (detailHeart) detailHeart.classList.toggle('active', isFavorite(contentId));
+}
+
+// Global scope expose for favorites
+window.toggleFavorite = toggleFavorite;
 
 // Coordinate conversion (Lat/Lng -> Grid X/Y) for KMA Weather API
 function dfs_xy_conv(code, v1, v2) {
@@ -237,6 +309,11 @@ async function fetchList(isNearby, areaCode, targetDateStr) {
 function renderFestivalList(items) {
     festivalList.innerHTML = items.map(item => `
         <div class="festival-card" onclick="openDetail('${item.contentid}')">
+            <button class="btn-favorite ${isFavorite(item.contentid) ? 'active' : ''}" 
+                    data-id="${item.contentid}"
+                    onclick="toggleFavorite('${item.contentid}', event)">
+                ♥
+            </button>
             <img src="${item.firstimage || 'https://via.placeholder.com/150?text=No+Image'}" class="card-image" alt="${item.title}">
             <div class="card-info">
                 <div class="card-title">${item.title}</div>
@@ -252,6 +329,22 @@ function renderFestivalList(items) {
 async function openDetail(contentId) {
     detailModal.classList.add('active');
     document.body.style.overflow = 'hidden';
+    
+    // Update modal header with favorite button
+    const headerTitle = detailModal.querySelector('h3');
+    if (headerTitle) {
+        // Clear previous favorite button if exists
+        const oldFav = detailModal.querySelector('.detail-favorite-header-btn');
+        if (oldFav) oldFav.remove();
+        
+        const favBtn = document.createElement('button');
+        favBtn.className = `detail-favorite-header-btn ${isFavorite(contentId) ? 'active' : ''}`;
+        favBtn.dataset.id = contentId;
+        favBtn.innerHTML = '♥';
+        favBtn.onclick = () => toggleFavorite(contentId);
+        headerTitle.after(favBtn);
+    }
+
     detailContent.innerHTML = `
         <div class="loading-spinner" style="display: flex;">
             <div class="spinner"></div>
