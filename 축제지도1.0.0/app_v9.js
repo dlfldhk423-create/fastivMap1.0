@@ -2,10 +2,10 @@ import { getAnonymousKey } from '@apps-in-toss/web-framework';
 
 // --- Existing App Logic ---
 
-// Configuration
-const API_KEY = 'd1505c3954d37e35a7ffeeeec74de7fc5b218dfbce9125763c52a4085ce79cfe';
-const TOUR_BASE_URL = 'https://apis.data.go.kr/B551011/KorService2';
-const WEATHER_BASE_URL = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0';
+// Configuration (Environment Variables)
+const API_KEY = import.meta.env.VITE_TOUR_API_KEY;
+const TOUR_BASE_URL = import.meta.env.VITE_TOUR_BASE_URL;
+const WEATHER_BASE_URL = import.meta.env.VITE_WEATHER_BASE_URL;
 
 // Global States
 let map = null;
