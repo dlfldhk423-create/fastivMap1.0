@@ -132,14 +132,36 @@ async function searchFestivals(isNearby) {
     try {
         let items = await fetchList(isNearby, areaCode, selectedDateStr);
         
-        if (!isNearby && areaCode && (!items || items.length === 0)) {
-            resultCount.innerText = '검색 결과를 상세히 분석 중입니다...';
+        // If an area is selected, we perform more robust filtering by addressing potential API data omissions
+        if (!isNearby && areaCode) {
+            // Merge results: original areacode filtered results + address-based keyword filtering
+            const targetAreaKeywords = AREA_NAMES[areaCode];
+            
+            // If items exist, they are already filtered by areaCode at the API level.
+            // But we still want to find items that might have been missed due to missing areacode field in the API database.
+            // So we always fetch the global (nationwide) list to find missing items.
+            resultCount.innerText = '더 많은 축제를 찾는 중...';
             const globalItems = await fetchList(false, '', selectedDateStr);
+            
             if (globalItems) {
-                const targetAreaKeywords = AREA_NAMES[areaCode];
-                items = globalItems.filter(item => {
-                    return targetAreaKeywords.some(keyword => item.addr1?.includes(keyword));
+                const filteredGlobal = globalItems.filter(item => {
+                    // Include if address contains the area keywords OR if the areacode matches
+                    const matchesAddress = targetAreaKeywords.some(keyword => item.addr1?.includes(keyword));
+                    const matchesAreaCode = String(item.areacode) === String(areaCode);
+                    return matchesAddress || matchesAreaCode;
                 });
+                
+                // Combine and remove duplicates (by contentid)
+                const combined = [...(items || [])];
+                const existingIds = new Set(combined.map(i => i.contentid));
+                
+                filteredGlobal.forEach(item => {
+                    if (!existingIds.has(item.contentid)) {
+                        combined.push(item);
+                        existingIds.add(item.contentid);
+                    }
+                });
+                items = combined;
             }
         }
 
@@ -186,10 +208,11 @@ async function fetchList(isNearby, areaCode, targetDateStr) {
         url = `${TOUR_BASE_URL}/locationBasedList2?serviceKey=${API_KEY}&numOfRows=150&pageNo=1&MobileOS=ETC&MobileApp=TossFestival&_type=json&mapX=${longitude}&mapY=${latitude}&radius=20000&contentTypeId=15&arrange=A`;
     } else {
         const dateObj = new Date(dateInput.value);
-        // Optimized search window (100 days) to balance historic coverage and result limit
         dateObj.setDate(dateObj.getDate() - 100);
         const searchStartDate = dateObj.toISOString().split('T')[0].replace(/-/g, '');
-        // numOfRows=1000 for maximum coverage, arrange=C (Recently Modified) to prioritize active festivals
+        // Always fetch a large nationwide set if no areaCode is provided, OR even if it is provided, 
+        // we might ignore it to prevent missing data in areacode-omitted records.
+        // However, to satisfy both, we'll keep the API-side filtering as an initial step.
         url = `${TOUR_BASE_URL}/searchFestival2?serviceKey=${API_KEY}&numOfRows=1000&pageNo=1&MobileOS=ETC&MobileApp=TossFestival&_type=json&arrange=C&eventStartDate=${searchStartDate}${areaCode ? `&areaCode=${areaCode}` : ''}`;
     }
 
