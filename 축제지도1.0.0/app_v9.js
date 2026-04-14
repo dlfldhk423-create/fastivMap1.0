@@ -41,6 +41,14 @@ const AREA_NAMES = {
     "39": ["제주", "제주특별자치도"]
 };
 
+// Administrative District Codes for robust filtering (lDongRegnCd)
+const ADMIN_CODES = {
+    "1": ["11"], "2": ["28"], "3": ["30"], "4": ["27"], "5": ["29"],
+    "6": ["26"], "7": ["31"], "8": ["36"], "31": ["41"], "32": ["42", "51"],
+    "33": ["43"], "34": ["44"], "35": ["47"], "36": ["48"], "37": ["45", "52"],
+    "38": ["46"], "39": ["50"]
+};
+
 // Set default date to today (Local Timezone Fix)
 const now = new Date();
 const offset = now.getTimezoneOffset() * 60000;
@@ -144,11 +152,14 @@ async function searchFestivals(isNearby) {
             const globalItems = await fetchList(false, '', selectedDateStr);
             
             if (globalItems) {
+                const targetAdminCodes = ADMIN_CODES[areaCode] || [];
                 const filteredGlobal = globalItems.filter(item => {
-                    // Include if address contains the area keywords OR if the areacode matches
+                    // Include if address contains the area keywords OR if the areacode matches OR if admin code matches
                     const matchesAddress = targetAreaKeywords.some(keyword => item.addr1?.includes(keyword));
                     const matchesAreaCode = String(item.areacode) === String(areaCode);
-                    return matchesAddress || matchesAreaCode;
+                    const matchesAdminCode = targetAdminCodes.includes(String(item.lDongRegnCd));
+                    
+                    return matchesAddress || matchesAreaCode || matchesAdminCode;
                 });
                 
                 // Combine and remove duplicates (by contentid)
