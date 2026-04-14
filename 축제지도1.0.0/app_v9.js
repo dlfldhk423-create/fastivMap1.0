@@ -15,6 +15,7 @@ let favorites = new Set();
 // DOM Elements
 const areaSelect = document.getElementById('area-select');
 const dateInput = document.getElementById('date-input');
+const todayBtn = document.getElementById('today-btn');
 const searchBtn = document.getElementById('search-btn');
 const nearbyBtn = document.getElementById('nearby-btn');
 const loading = document.getElementById('loading');
@@ -56,9 +57,13 @@ const ADMIN_CODES = {
 };
 
 // Set default date to today (Local Timezone Fix)
-const now = new Date();
-const offset = now.getTimezoneOffset() * 60000;
-const localISOTime = (new Date(now - offset)).toISOString().slice(0, 10);
+function getTodayISO() {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60000;
+    return (new Date(now.getTime() - offset)).toISOString().slice(0, 10);
+}
+
+const localISOTime = getTodayISO();
 
 if (dateInput) {
     dateInput.value = localISOTime;
@@ -67,6 +72,11 @@ if (dateInput) {
 
 // Event Listeners
 function initEventListeners() {
+    if (todayBtn) {
+        todayBtn.onclick = () => {
+            if (dateInput) dateInput.value = getTodayISO();
+        };
+    }
     if (searchBtn) {
         searchBtn.onclick = (e) => {
             if (e) e.preventDefault();

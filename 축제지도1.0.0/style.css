@@ -403,6 +403,23 @@ select.input-control {
     color: var(--color-text-tertiary);
 }
 
+.text-btn {
+    background: none;
+    border: none;
+    color: var(--color-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: var(--transition-base);
+}
+
+.text-btn:active {
+    background-color: var(--tds-color-blue-light);
+    transform: scale(0.95);
+}
+
 .section-desc {
     font-size: 15px;
     color: var(--color-text-secondary);
