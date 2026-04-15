@@ -304,18 +304,23 @@ async function showDetail(contentId) {
     if (detailContentArea) detailContentArea.innerHTML = '<div class="loader-container"><div class="spinner"></div></div>';
 
     try {
-        // KorService2의 detailCommon2는 추가 Y/N 파라미터 없이 contentId만으로 전체 정보를 반환합니다.
-        // 불필요한 파라미터(addrinfoYN 등) 포함 시 에러가 발생하므로 제거합니다.
-        const url = `${TOUR_BASE_URL}/detailCommon2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}`;
+        // detailCommon2와 detailIntro2를 병렬로 호출하여 정보 획득
+        const commonUrl = `${TOUR_BASE_URL}/detailCommon2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}&overviewYN=Y&addrinfoYN=Y&defaultYN=Y&firstImageYN=Y`;
+        const introUrl = `${TOUR_BASE_URL}/detailIntro2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}&contentTypeId=15`;
         
-        const response = await fetch(url);
-        const data = await response.json();
+        const [commonRes, introRes] = await Promise.all([
+            fetch(commonUrl).then(r => r.json()),
+            fetch(introUrl).then(r => r.json())
+        ]);
         
-        let item = data.response?.body?.items?.item;
-        if (Array.isArray(item)) item = item[0];
+        let commonItem = commonRes.response?.body?.items?.item;
+        if (Array.isArray(commonItem)) commonItem = commonItem[0];
 
-        if (item) {
-            renderDetail(item);
+        let introItem = introRes.response?.body?.items?.item;
+        if (Array.isArray(introItem)) introItem = introItem[0];
+
+        if (commonItem) {
+            renderDetail(commonItem, introItem);
         } else {
             if (detailContentArea) detailContentArea.innerHTML = '<div class="empty-state"><p class="msg">등록된 상세 정보가 없습니다.</p></div>';
         }
@@ -328,16 +333,59 @@ async function showDetail(contentId) {
 /**
  * Render Detail View in Bottom Sheet
  */
-function renderDetail(item) {
+function renderDetail(item, intro) {
     if (!detailContentArea) return;
     
+    // 날짜 포맷팅: YYYYMMDD -> YYYY.MM.DD
+    const formatDateFull = (str) => {
+        if (!str || str.length < 8) return str;
+        return `${str.substring(0,4)}.${str.substring(4,6)}.${str.substring(6,8)}`;
+    };
+
+    const periodStr = (intro?.eventstartdate && intro?.eventenddate) 
+        ? `${formatDateFull(intro.eventstartdate)} ~ ${formatDateFull(intro.eventenddate)}`
+        : '정보 없음';
+
+    // 주차 정보: intro에 없을 경우 overview에서 검색 시도
+    let parkingInfo = intro?.parkingfestival || '';
+    if (!parkingInfo && item.overview) {
+        const parkingMatch = item.overview.match(/주차[가-힣\s]*:[가-힣\s0-9,]+/);
+        if (parkingMatch) parkingInfo = parkingMatch[0];
+    }
+
     detailContentArea.innerHTML = `
         <img src="${item.firstimage || 'https://via.placeholder.com/600x400?text=Festimap'}" class="detail-img" alt="${item.title}">
         <div class="detail-body">
             <h1 style="margin-bottom:12px;">${item.title}</h1>
             <p style="margin-bottom:24px; color:var(--color-text-tertiary);">${item.addr1 || '상세 주소 정보 없음'}</p>
             
-            <div class="card" style="padding:16px; background-color:var(--color-bg); border-radius:16px;">
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="info-icon">🗓️</span>
+                    <div class="info-content">
+                        <span class="info-label">행사 기간</span>
+                        <span class="info-value">${periodStr}</span>
+                    </div>
+                </div>
+                ${intro?.usetimefestival ? `
+                <div class="info-row">
+                    <span class="info-icon">🎫</span>
+                    <div class="info-content">
+                        <span class="info-label">입장료</span>
+                        <span class="info-value">${intro.usetimefestival}</span>
+                    </div>
+                </div>` : ''}
+                ${parkingInfo ? `
+                <div class="info-row">
+                    <span class="info-icon">🚗</span>
+                    <div class="info-content">
+                        <span class="info-label">주차 정보</span>
+                        <span class="info-value">${parkingInfo}</span>
+                    </div>
+                </div>` : ''}
+            </div>
+
+            <div class="card" style="padding:16px; background-color:var(--color-bg); border-radius:16px; margin-top:16px;">
                 <h3 style="margin-bottom:8px;">축제 소개</h3>
                 <p style="font-size:14px; line-height:1.7;">${item.overview || '행사 설명이 등록되지 않았습니다.'}</p>
             </div>

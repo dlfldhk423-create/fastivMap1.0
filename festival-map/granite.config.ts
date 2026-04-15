@@ -29,7 +29,7 @@ export default defineConfig({
   },
 
   // 미니앱의 시작 지점을 설정합니다.
-  serviceEndpoint: '/',
+  serviceEndpoint: '/web/index.html',
   
   // 빌드 결과물이 저장될 경로입니다.
   outdir: 'dist',
