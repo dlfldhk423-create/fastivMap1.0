@@ -1,577 +1,380 @@
 import { getAnonymousKey } from '@apps-in-toss/web-framework';
 
-// --- Existing App Logic ---
-
-// Configuration (Environment Variables)
+// --- Configuration (Environment Variables) ---
 const API_KEY = import.meta.env.VITE_TOUR_API_KEY;
 const TOUR_BASE_URL = import.meta.env.VITE_TOUR_BASE_URL;
 const WEATHER_BASE_URL = import.meta.env.VITE_WEATHER_BASE_URL;
 
-// Global States
+// --- Global States ---
 let map = null;
 let userKey = null;
-let favorites = new Set();
+let favoriteIds = [];
 
-// DOM Elements
+// --- DOM Elements ---
 const areaSelect = document.getElementById('area-select');
+const currentAreaLabel = document.getElementById('current-area-label');
 const dateInput = document.getElementById('date-input');
+const currentDateLabel = document.getElementById('current-date-label');
 const todayBtn = document.getElementById('today-btn');
 const searchBtn = document.getElementById('search-btn');
 const nearbyBtn = document.getElementById('nearby-btn');
-const loading = document.getElementById('loading');
 const festivalList = document.getElementById('festival-list');
 const resultCount = document.getElementById('result-count');
-const recommendationContainer = document.getElementById('recommendation-container');
+const loader = document.getElementById('loader');
 const recommendationList = document.getElementById('recommendation-list');
-const detailModal = document.getElementById('detail-modal');
-const closeModal = document.getElementById('close-modal');
-const detailContent = document.getElementById('detail-content');
+const detailOverlay = document.getElementById('detail-overlay');
+const festivalDetail = document.getElementById('festival-detail');
+const detailContentArea = document.getElementById('detail-content-area');
+const closeDetail = document.getElementById('close-detail');
+const appHeader = document.getElementById('app-header');
 
-// Area Name Mapping (for robust address filtering)
-const AREA_NAMES = {
-    "1": ["서울", "서울특별시"],
-    "2": ["인천", "인천광역시"],
-    "3": ["대전", "대전광역시"],
-    "4": ["대구", "대구광역시"],
-    "5": ["광주", "광주광역시"],
-    "6": ["부산", "부산광역시"],
-    "7": ["울산", "울산광역시"],
-    "8": ["세종", "세종특별자치시"],
-    "31": ["경기", "경기도"],
-    "32": ["강원", "강원특별자치도"],
-    "33": ["충북", "충청북도"],
-    "34": ["충남", "충청남도"],
-    "35": ["경북", "경상북도"],
-    "36": ["경남", "경상남도"],
-    "37": ["전북", "전북특별자치도"],
-    "38": ["전남", "전라남도"],
-    "39": ["제주", "제주특별자치도"]
-};
+// --- Initialization ---
 
-// Administrative District Codes for robust filtering (lDongRegnCd)
-const ADMIN_CODES = {
-    "1": ["11"], "2": ["28"], "3": ["30"], "4": ["27"], "5": ["29"],
-    "6": ["26"], "7": ["31"], "8": ["36"], "31": ["41"], "32": ["42", "51"],
-    "33": ["43"], "34": ["44"], "35": ["47"], "36": ["48"], "37": ["45", "52"],
-    "38": ["46"], "39": ["50"]
-};
-
-// Set default date to today (Local Timezone Fix)
-function getTodayISO() {
-    // Correct local date string (YYYY-MM-DD) across all timezones
-    return new Date().toLocaleDateString('en-CA');
-}
-
-const localISOTime = getTodayISO();
-
-if (dateInput) {
-    dateInput.value = localISOTime;
-    console.log('Date initialized to:', localISOTime);
-}
-
-// Event Listeners
-function initEventListeners() {
-    if (todayBtn) {
-        todayBtn.onclick = () => {
-            if (dateInput) dateInput.value = getTodayISO();
-        };
-    }
-    if (searchBtn) {
-        searchBtn.onclick = (e) => {
-            if (e) e.preventDefault();
-            console.log('Search button clicked');
-            searchFestivals(false);
-        };
-    }
-    if (nearbyBtn) {
-        nearbyBtn.onclick = (e) => {
-            if (e) e.preventDefault();
-            console.log('Nearby button clicked');
-            searchFestivals(true);
-        };
-    }
-    if (closeModal) {
-        closeModal.onclick = () => {
-            detailModal.classList.remove('active');
-            document.body.style.overflow = '';
-        };
-    }
-}
-
-// Initialize on load
+/**
+ * Main app initializer
+ */
 async function initializeApp() {
     initEventListeners();
+    setTodayDate();
     
+    // Header Blur/Shadow effect on scroll
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 10) {
+            appHeader.classList.add('scrolled');
+        } else {
+            appHeader.classList.remove('scrolled');
+        }
+    });
+
     try {
-        // Initialize User Identification Key (Anonymous Key)
-        // Non-game mini-apps should use getAnonymousKey for consent-less identification
         const result = await getAnonymousKey();
         userKey = result?.anonymousKey;
-        console.log('User identifying key issued:', userKey);
-        
-        // Load favorites from local storage (keyed by userKey for future multi-user support)
-        loadFavorites();
-
-        // Load Recommended Festivals for the main screen
-        loadRecommendations();
+        if (userKey) {
+            loadFavorites();
+        }
     } catch (error) {
         console.error('Failed to get anonymous key:', error);
-        // Fallback or handle error
+    }
+    
+    // Always try to load recommendations
+    initializeRecommendations();
+}
+
+/**
+ * Initialize Event Listeners
+ */
+function initEventListeners() {
+    if (searchBtn) searchBtn.onclick = () => searchFestivals(false);
+    if (nearbyBtn) nearbyBtn.onclick = () => searchFestivals(true);
+    if (todayBtn) todayBtn.onclick = setTodayDate;
+    if (closeDetail) closeDetail.onclick = hideBottomSheet;
+    if (detailOverlay) detailOverlay.onclick = hideBottomSheet;
+    
+    if (areaSelect) {
+        areaSelect.onchange = (e) => {
+            const selectedText = e.target.options[e.target.selectedIndex].text;
+            if (currentAreaLabel) currentAreaLabel.innerText = selectedText;
+        };
+    }
+
+    if (dateInput) {
+        dateInput.onchange = (e) => {
+            updateDateLabel(e.target.value);
+        };
     }
 }
 
-initializeApp();
+/**
+ * Set current date to today
+ */
+function setTodayDate() {
+    if (dateInput) {
+        const today = new Date().toLocaleDateString('en-CA');
+        dateInput.value = today;
+        updateDateLabel(today);
+    }
+}
 
-// Favorites Logic
+/**
+ * Update the visible text for the selected date
+ */
+function updateDateLabel(dateStr) {
+    if (!currentDateLabel) return;
+    
+    const today = new Date().toLocaleDateString('en-CA');
+    if (dateStr === today) {
+        currentDateLabel.innerText = '오늘';
+    } else {
+        const date = new Date(dateStr);
+        currentDateLabel.innerText = `${date.getMonth() + 1}월 ${date.getDate()}일`;
+    }
+}
+
+/**
+ * Load favorites from local storage
+ */
 function loadFavorites() {
-    const key = userKey || 'guest';
-    const saved = localStorage.getItem(`fest_fav_${key}`);
+    const saved = localStorage.getItem(`faves_${userKey}`);
     if (saved) {
-        favorites = new Set(JSON.parse(saved));
-    } else {
-        favorites = new Set();
+        favoriteIds = JSON.parse(saved);
+        console.log('Favorites loaded:', favoriteIds);
     }
 }
 
+/**
+ * Save favorites to local storage
+ */
 function saveFavorites() {
-    const key = userKey || 'guest';
-    localStorage.setItem(`fest_fav_${key}`, JSON.stringify(Array.from(favorites)));
-}
-
-function toggleFavorite(contentId, event) {
-    if (event) event.stopPropagation(); // Prevent opening detail when clicking heart
-    
-    if (favorites.has(contentId)) {
-        favorites.delete(contentId);
-    } else {
-        favorites.add(contentId);
+    if (userKey) {
+        localStorage.setItem(`faves_${userKey}`, JSON.stringify(favoriteIds));
     }
-    
-    saveFavorites();
-    
-    // Update UI elements that show this status
-    updateFavoriteUI(contentId);
 }
 
-function isFavorite(contentId) {
-    return favorites.has(contentId);
-}
+// --- Dynamic Content & API ---
 
-function updateFavoriteUI(contentId) {
-    // Update all hearts in the list
-    const listHearts = document.querySelectorAll(`.btn-favorite[data-id="${contentId}"]`);
-    listHearts.forEach(h => h.classList.toggle('active', isFavorite(contentId)));
+/**
+ * Load popular festival recommendations
+ */
+async function initializeRecommendations() {
+    if (!recommendationList) return;
     
-    // Update heart in the detail view if open
-    const detailHeart = document.querySelector(`.detail-favorite-header-btn[data-id="${contentId}"]`);
-    if (detailHeart) detailHeart.classList.toggle('active', isFavorite(contentId));
-}
-
-// Global scope expose for favorites
-window.toggleFavorite = toggleFavorite;
-
-// Recommendation Logic
-async function loadRecommendations() {
     try {
-        const todayStr = localISOTime.replace(/-/g, '');
-        // Fetch nationwide data to pick recommendations
-        const allFestivals = await fetchList(false, '', todayStr);
+        const todayStr = new Date().toLocaleDateString('en-CA').replace(/-/g, '');
+        // Search for festivals happening around now (nationwide)
+        const url = `${TOUR_BASE_URL}/searchFestival2?serviceKey=${API_KEY}&numOfRows=10&pageNo=1&MobileOS=ETC&MobileApp=TossFestival&_type=json&arrange=C&eventStartDate=${todayStr}`;
         
-        if (allFestivals && allFestivals.length > 0) {
-            // Pick 10 festivals that have images
-            const recommended = allFestivals
-                .filter(item => item.firstimage)
-                .slice(0, 10);
-            
-            if (recommended.length > 0) {
-                renderRecommendations(recommended);
-                recommendationContainer.style.display = 'block';
-            }
+        const response = await fetch(url);
+        const data = await response.json();
+        const items = data.response?.body?.items?.item;
+
+        if (items && items.length > 0) {
+            renderRecommendations(items);
+        } else {
+            recommendationList.innerHTML = '<p class="msg" style="padding:20px;">현재 진행 중인 인기 축제가 없습니다.</p>';
         }
     } catch (error) {
         console.error('Failed to load recommendations:', error);
+        recommendationList.innerHTML = '<p class="msg" style="padding:20px;">추천 축제를 불러오지 못했습니다.</p>';
     }
 }
 
+/**
+ * Render recommendations list
+ */
 function renderRecommendations(items) {
-    recommendationList.innerHTML = items.map(item => `
-        <div class="recommend-card" onclick="openDetail('${item.contentid}')">
-            <img src="${item.firstimage}" class="recommend-image" alt="${item.title}">
-            <div class="recommend-title">${item.title}</div>
-        </div>
-    `).join('');
+    if (!recommendationList) return;
+    recommendationList.innerHTML = '';
+    
+    items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'recommend-card';
+        card.innerHTML = `
+            <div class="image-container">
+                <img src="${item.firstimage || 'https://via.placeholder.com/300x400?text=No+Image'}" alt="${item.title}" loading="lazy">
+            </div>
+            <div class="title">${item.title}</div>
+        `;
+        card.onclick = () => showDetail(item.contentid);
+        recommendationList.appendChild(card);
+    });
 }
 
-// Coordinate conversion (Lat/Lng -> Grid X/Y) for KMA Weather API
-function dfs_xy_conv(code, v1, v2) {
-    const RE = 6371.00877; 
-    const GRID = 5.0; 
-    const SLAT1 = 30.0; 
-    const SLAT2 = 60.0; 
-    const OLON = 126.0; 
-    const OLAT = 38.0; 
-    const XO = 43; 
-    const YO = 136; 
-
-    const DEGRAD = Math.PI / 180.0;
-    const RADDEG = 180.0 / Math.PI;
-
-    const re = RE / GRID;
-    const slat1 = SLAT1 * DEGRAD;
-    const slat2 = SLAT2 * DEGRAD;
-    const olon = OLON * DEGRAD;
-    const olat = OLAT * DEGRAD;
-
-    let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
-    sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
-    let sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
-    sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
-    let ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
-    ro = re * sf / Math.pow(ro, sn);
-
-    let rs = {};
-    if (code == "toXY") {
-        rs['lat'] = v1;
-        rs['lng'] = v2;
-        let ra = Math.tan(Math.PI * 0.25 + (v1) * DEGRAD * 0.5);
-        ra = re * sf / Math.pow(ra, sn);
-        let theta = v2 * DEGRAD - olon;
-        if (theta > Math.PI) theta -= 2.0 * Math.PI;
-        if (theta < -Math.PI) theta += 2.0 * Math.PI;
-        theta *= sn;
-        rs['x'] = Math.floor(ra * Math.sin(theta) + XO + 0.5);
-        rs['y'] = Math.floor(ro - ra * Math.cos(theta) + YO + 0.5);
-    }
-    return rs;
-}
-
-// Search Festivals
+/**
+ * Search Festivals
+ */
 async function searchFestivals(isNearby) {
-    showLoading(true);
-    festivalList.innerHTML = '';
-    resultCount.innerText = '축제 검색 중...';
-
-    const selectedDateStr = dateInput.value.replace(/-/g, '');
-    const selectedDate = parseInt(selectedDateStr);
-    const areaCode = areaSelect.value;
+    if (loader) loader.style.display = 'flex';
+    if (festivalList) festivalList.innerHTML = '';
+    if (resultCount) resultCount.innerText = '찾는 중...';
 
     try {
-        let items = await fetchList(isNearby, areaCode, selectedDateStr);
-        
-        // If an area is selected, we perform more robust filtering by addressing potential API data omissions
-        if (!isNearby && areaCode) {
-            // Merge results: original areacode filtered results + address-based keyword filtering
-            const targetAreaKeywords = AREA_NAMES[areaCode];
+        const searchDate = dateInput.value.replace(/-/g, '');
+        const areaCode = areaSelect.value;
+        const selectedAreaText = areaSelect.options[areaSelect.selectedIndex].text;
+
+        let url = '';
+        if (isNearby) {
+            const lat = 37.5665;
+            const lng = 126.9780;
+            url = `${TOUR_BASE_URL}/locationBasedList2?serviceKey=${API_KEY}&numOfRows=50&pageNo=1&MobileOS=ETC&MobileApp=TossFestival&_type=json&mapX=${lng}&mapY=${lat}&radius=20000&contentTypeId=15&arrange=A`;
+        } else {
+            // 지역 선택이 있더라도 우선 '전국' 검색 수행 (API의 지역 코드 누락 대응)
+            url = `${TOUR_BASE_URL}/searchFestival2?serviceKey=${API_KEY}&numOfRows=200&pageNo=1&MobileOS=ETC&MobileApp=TossFestival&_type=json&arrange=C&eventStartDate=${searchDate}`;
             
-            // If items exist, they are already filtered by areaCode at the API level.
-            // But we still want to find items that might have been missed due to missing areacode field in the API database.
-            // So we always fetch the global (nationwide) list to find missing items.
-            resultCount.innerText = '더 많은 축제를 찾는 중...';
-            const globalItems = await fetchList(false, '', selectedDateStr);
-            
-            if (globalItems) {
-                const targetAdminCodes = ADMIN_CODES[areaCode] || [];
-                const filteredGlobal = globalItems.filter(item => {
-                    // Include if address contains the area keywords OR if the areacode matches OR if admin code matches
-                    const matchesAddress = targetAreaKeywords.some(keyword => item.addr1?.includes(keyword));
-                    const matchesAreaCode = String(item.areacode) === String(areaCode);
-                    const matchesAdminCode = targetAdminCodes.includes(String(item.lDongRegnCd));
-                    
-                    return matchesAddress || matchesAreaCode || matchesAdminCode;
-                });
-                
-                // Combine and remove duplicates (by contentid)
-                const combined = [...(items || [])];
-                const existingIds = new Set(combined.map(i => i.contentid));
-                
-                filteredGlobal.forEach(item => {
-                    if (!existingIds.has(item.contentid)) {
-                        combined.push(item);
-                        existingIds.add(item.contentid);
-                    }
-                });
-                items = combined;
-            }
+            // 만약 특정 지역이 선택되었다면 파라미터형 검색도 시도해볼 수 있지만, 
+            // 데이터 무결성을 위해 전체를 가져와 필터링하는 방식이 더 안정적입니다.
         }
 
-        if (!items || items.length === 0) {
-            festivalList.innerHTML = `<div class="empty-state">${isNearby ? '주변 20km 이내에 진행 중인 축제가 없습니다.' : '현재 조회된 축제가 없습니다.'}</div>`;
-            resultCount.innerText = '축제 목록 (0)';
-        } else {
-            let itemList = Array.isArray(items) ? items : [items];
-            
-            itemList = itemList.filter(item => {
-                const sDate = parseInt(item.eventstartdate);
-                const eDate = parseInt(item.eventenddate);
-                
-                // Ensure sDate and eDate are valid numbers before comparison
-                if (isNaN(sDate) || isNaN(eDate)) return false;
-                
-                return sDate <= selectedDate && eDate >= selectedDate;
-            });
+        const response = await fetch(url);
+        const data = await response.json();
+        let items = data.response?.body?.items?.item || [];
+        if (!Array.isArray(items)) items = [items];
 
-            if (itemList.length === 0) {
-                festivalList.innerHTML = '<div class="empty-state">해당 날짜에 진행 중인 축제가 없습니다.</div>';
-                resultCount.innerText = '축제 목록 (0)';
-            } else {
-                renderFestivalList(itemList);
-                resultCount.innerText = `축제 목록 (${itemList.length})`;
-            }
+        // 지역 필터링 (지역이 선택된 경우에만)
+        if (!isNearby && areaCode !== "") {
+            items = items.filter(item => {
+                // 1. 공식 지역 코드가 일치하는지 확인
+                if (item.areacode === areaCode) return true;
+                
+                // 2. 주소 텍스트에 지역명이 포함되어 있는지 확인 (가장 확실함)
+                const addr = item.addr1 || "";
+                return addr.includes(selectedAreaText) || (selectedAreaText === "경기" && addr.includes("경기도"));
+            });
+        }
+
+        if (loader) loader.style.display = 'none';
+
+        if (items && items.length > 0) {
+            renderFestivalList(items);
+            resultCount.innerText = `${items.length}개의 축제 발견`;
+        } else {
+            festivalList.innerHTML = `
+                <div class="empty-state">
+                    <span class="icon">🏜️</span>
+                    <p class="msg">${selectedAreaText} 지역에<br>선택하신 날짜의 축제가 없습니다.</p>
+                </div>
+            `;
+            resultCount.innerText = '결과 없음';
         }
     } catch (error) {
-        festivalList.innerHTML = `<div class="empty-state">데이터를 가져오는 중 오류가 발생했습니다.<br><small>${error.message}</small></div>`;
+        console.error('Search failed:', error);
+        if (loader) loader.style.display = 'none';
         resultCount.innerText = '오류 발생';
-    } finally {
-        showLoading(false);
     }
 }
 
-// Fetch Helper
-async function fetchList(isNearby, areaCode, targetDateStr) {
-    let url = '';
-    if (isNearby) {
-        const position = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
-        });
-        const { latitude, longitude } = position.coords;
-        url = `${TOUR_BASE_URL}/locationBasedList2?serviceKey=${API_KEY}&numOfRows=150&pageNo=1&MobileOS=ETC&MobileApp=TossFestival&_type=json&mapX=${longitude}&mapY=${latitude}&radius=20000&contentTypeId=15&arrange=A`;
-    } else {
-        const dateObj = new Date(dateInput.value);
-        dateObj.setDate(dateObj.getDate() - 100);
-        const searchStartDate = dateObj.toISOString().split('T')[0].replace(/-/g, '');
-        // Always fetch a large nationwide set if no areaCode is provided, OR even if it is provided, 
-        // we might ignore it to prevent missing data in areacode-omitted records.
-        // However, to satisfy both, we'll keep the API-side filtering as an initial step.
-        url = `${TOUR_BASE_URL}/searchFestival2?serviceKey=${API_KEY}&numOfRows=1000&pageNo=1&MobileOS=ETC&MobileApp=TossFestival&_type=json&arrange=C&eventStartDate=${searchStartDate}${areaCode ? `&areaCode=${areaCode}` : ''}`;
-    }
-
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('API 호출 실패');
-    const data = await response.json();
-    return data.response?.body?.items?.item;
-}
-
-// Render Festival List
+/**
+ * Render Festival List
+ */
 function renderFestivalList(items) {
-    festivalList.innerHTML = items.map(item => `
-        <div class="festival-card" onclick="openDetail('${item.contentid}')">
-            <button class="btn-favorite ${isFavorite(item.contentid) ? 'active' : ''}" 
-                    data-id="${item.contentid}"
-                    onclick="toggleFavorite('${item.contentid}', event)">
-                ♥
-            </button>
-            <img src="${item.firstimage || 'https://via.placeholder.com/150?text=No+Image'}" class="card-image" alt="${item.title}">
-            <div class="card-info">
-                <div class="card-title">${item.title}</div>
-                <div class="card-meta">${formatDate(item.eventstartdate)} ~ ${formatDate(item.eventenddate)}</div>
-                <div class="card-meta">${item.addr1 || ''}</div>
-                <span class="card-tag">${item.addr1?.split(' ')[0] || '축제'}</span>
+    if (!festivalList) return;
+    festivalList.innerHTML = '';
+
+    items.forEach(item => {
+        const isFav = favoriteIds.includes(item.contentid);
+        const div = document.createElement('div');
+        div.className = 'festival-item';
+        div.innerHTML = `
+            <img src="${item.firstimage2 || 'https://via.placeholder.com/150?text=Logo'}" class="festival-thumb" alt="${item.title}">
+            <div class="festival-info">
+                <div class="festival-title">${item.title}</div>
+                <div class="festival-date">${formatDate(item.eventstartdate)} ~ ${formatDate(item.eventenddate)}</div>
             </div>
-        </div>
-    `).join('');
+            <div class="favorite-icon ${isFav ? 'active' : ''}" data-id="${item.contentid}">
+                ${isFav ? '❤️' : '🤍'}
+            </div>
+        `;
+        
+        div.onclick = (e) => {
+            if (e.target.classList.contains('favorite-icon')) {
+                toggleFavorite(item.contentid, e.target);
+            } else {
+                showDetail(item.contentid);
+            }
+        };
+        festivalList.appendChild(div);
+    });
 }
 
-// Open Detail Modal
-async function openDetail(contentId) {
-    detailModal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-    
-    // Update modal header with favorite button
-    const headerTitle = detailModal.querySelector('h3');
-    if (headerTitle) {
-        // Clear previous favorite button if exists
-        const oldFav = detailModal.querySelector('.detail-favorite-header-btn');
-        if (oldFav) oldFav.remove();
-        
-        const favBtn = document.createElement('button');
-        favBtn.className = `detail-favorite-header-btn ${isFavorite(contentId) ? 'active' : ''}`;
-        favBtn.dataset.id = contentId;
-        favBtn.innerHTML = '♥';
-        favBtn.onclick = () => toggleFavorite(contentId);
-        headerTitle.after(favBtn);
-    }
+function formatDate(str) {
+    if (!str || str.length < 8) return str;
+    return `${str.substring(4,6)}.${str.substring(6,8)}`;
+}
 
-    detailContent.innerHTML = `
-        <div class="loading-spinner" style="display: flex;">
-            <div class="spinner"></div>
-            <p>상세 정보를 불러오고 있어요</p>
-        </div>
-    `;
+/**
+ * Bottom Sheet Management
+ */
+function showBottomSheet() {
+    if (detailOverlay) detailOverlay.classList.add('active');
+    if (festivalDetail) festivalDetail.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function hideBottomSheet() {
+    if (detailOverlay) detailOverlay.classList.remove('active');
+    if (festivalDetail) festivalDetail.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+/**
+ * Show Detailed View
+ */
+async function showDetail(contentId) {
+    showBottomSheet();
+    if (detailContentArea) detailContentArea.innerHTML = '<div class="loader-container"><div class="spinner"></div></div>';
 
     try {
-        const safeUrl = `${TOUR_BASE_URL}/detailCommon2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}`;
-        const response = await fetch(safeUrl);
+        // KorService2의 detailCommon2는 추가 Y/N 파라미터 없이 contentId만으로 전체 정보를 반환합니다.
+        // 불필요한 파라미터(addrinfoYN 등) 포함 시 에러가 발생하므로 제거합니다.
+        const url = `${TOUR_BASE_URL}/detailCommon2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}`;
+        
+        const response = await fetch(url);
         const data = await response.json();
         
-        if (data.response?.header?.resultCode !== '0000') {
-            throw new Error(data.response?.header?.resultMsg || 'API Error');
+        let item = data.response?.body?.items?.item;
+        if (Array.isArray(item)) item = item[0];
+
+        if (item) {
+            renderDetail(item);
+        } else {
+            if (detailContentArea) detailContentArea.innerHTML = '<div class="empty-state"><p class="msg">등록된 상세 정보가 없습니다.</p></div>';
         }
-
-        const commonItems = data.response?.body?.items?.item;
-        const commonItem = Array.isArray(commonItems) ? commonItems[0] : commonItems;
-
-        if (!commonItem) throw new Error('상세 정보를 찾을 수 없습니다.');
-
-        const introUrl = `${TOUR_BASE_URL}/detailIntro2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}&contentTypeId=15`;
-        const introRes = await fetch(introUrl);
-        const introData = await introRes.json();
-        const introItems = introData.response?.body?.items?.item;
-        const introItem = Array.isArray(introItems) ? introItems[0] : introItems;
-
-        let weatherData = null;
-        if (commonItem && commonItem.mapx && commonItem.mapy) {
-            weatherData = await fetchWeather(commonItem.mapx, commonItem.mapy);
-        }
-
-        renderDetail(commonItem, introItem, weatherData);
-        
     } catch (error) {
-        detailContent.innerHTML = `<div class="empty-state">상세 정보를 불러오지 못했습니다.<br><small>${error.message}</small></div>`;
+        console.error('Failed to load details:', error);
+        if (detailContentArea) detailContentArea.innerHTML = '<div class="empty-state"><p class="msg">정보를 불러오지 못했습니다.</p></div>';
     }
 }
 
-// Global scope expose for inline onclick
-window.openDetail = openDetail;
-
-// Fetch Weather Data
-async function fetchWeather(lng, lat) {
-    const grid = dfs_xy_conv("toXY", parseFloat(lat), parseFloat(lng));
-    const now = new Date();
+/**
+ * Render Detail View in Bottom Sheet
+ */
+function renderDetail(item) {
+    if (!detailContentArea) return;
     
-    const minutes = now.getMinutes();
-    if (minutes < 40) {
-        now.setHours(now.getHours() - 1);
-    }
-    
-    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-    let hour = now.getHours();
-    const timeStr = (hour < 10 ? '0' + hour : hour) + '00';
-
-    try {
-        const url = `${WEATHER_BASE_URL}/getUltraSrtNcst?serviceKey=${API_KEY}&numOfRows=10&pageNo=1&_type=json&base_date=${dateStr}&base_time=${timeStr}&nx=${grid.x}&ny=${grid.y}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        
-        if (data.response?.header?.resultCode !== '0000') {
-            return null;
-        }
-
-        const items = data.response?.body?.items?.item;
-        if (items) {
-            const weather = {};
-            items.forEach(i => {
-                if (i.category === 'T1H') weather.temp = i.obsrValue; 
-                if (i.category === 'PTY') weather.pty = i.obsrValue; 
-            });
-            return weather;
-        }
-    } catch (e) {
-        console.error('Weather API fetch error:', e);
-    }
-    return null;
-}
-
-// Render Detail View
-function renderDetail(common, intro, weather) {
-    if (!common) return;
-
-    detailContent.innerHTML = `
-        <img src="${common.firstimage || 'https://via.placeholder.com/400x250?text=No+Image'}" class="detail-image" alt="${common.title}">
-        
+    detailContentArea.innerHTML = `
+        <img src="${item.firstimage || 'https://via.placeholder.com/600x400?text=Festimap'}" class="detail-img" alt="${item.title}">
         <div class="detail-body">
-            <h1 class="detail-title">${common.title}</h1>
+            <h1 style="margin-bottom:12px;">${item.title}</h1>
+            <p style="margin-bottom:24px; color:var(--color-text-tertiary);">${item.addr1 || '상세 주소 정보 없음'}</p>
             
-            ${weather ? `
-            <div class="weather-card">
-                <div class="weather-icon">${getWeatherIcon(weather.pty)}</div>
-                <div>
-                    <div class="weather-temp">${weather.temp}°</div>
-                    <div class="weather-desc">실시간 기상 정보</div>
-                </div>
+            <div class="card" style="padding:16px; background-color:var(--color-bg); border-radius:16px;">
+                <h3 style="margin-bottom:8px;">축제 소개</h3>
+                <p style="font-size:14px; line-height:1.7;">${item.overview || '행사 설명이 등록되지 않았습니다.'}</p>
             </div>
-            ` : ''}
-
-            <div class="info-item">
-                <div class="info-label">장소</div>
-                <div class="info-value">${common.addr1 || '정보 없음'} ${common.addr2 || ''}</div>
-            </div>
-
-            ${intro?.placeinfo ? `
-            <div class="info-item">
-                <div class="info-label">장소/주차 안내</div>
-                <div class="info-value">${cleanText(intro.placeinfo)}</div>
-            </div>
-            ` : ''}
-
-            <div class="nav-buttons">
-                <button class="btn-nav" onclick="openNav('kakao', '${common.title}', ${common.mapy}, ${common.mapx})">
-                    카카오맵 길찾기
+            
+            <div class="map-links">
+                <button class="btn btn-map btn-naver" onclick="window.open('https://map.naver.com/v5/search/${encodeURIComponent(item.title)}', '_blank')">
+                    네이버 지도
                 </button>
-                <button class="btn-nav" onclick="openNav('naver', '${common.title}', ${common.mapy}, ${common.mapx})">
-                    네이버지도 길찾기
+                <button class="btn btn-map btn-kakao" onclick="window.open('https://map.kakao.com/link/search/${encodeURIComponent(item.title)}', '_blank')">
+                    카카오맵
                 </button>
             </div>
 
-            ${common.eventstartdate ? `
-            <div class="info-item">
-                <div class="info-label">일시</div>
-                <div class="info-value">${formatDate(common.eventstartdate)} ~ ${formatDate(common.eventenddate) || ''}</div>
-            </div>
-            ` : ''}
-
-            ${intro?.usetimefestival ? `
-            <div class="info-item">
-                <div class="info-label">이용요금</div>
-                <div class="info-value">${cleanText(intro.usetimefestival)}</div>
-            </div>
-            ` : ''}
-
-            ${intro?.playtime ? `
-            <div class="info-item">
-                <div class="info-label">이용시간</div>
-                <div class="info-value">${cleanText(intro.playtime)}</div>
-            </div>
-            ` : ''}
-
-            <div class="info-item">
-                <div class="info-label">상세 설명</div>
-                <div class="info-value">${cleanText(common.overview) || '설명이 없습니다.'}</div>
-            </div>
+            <button class="btn btn-primary" style="margin-top:12px; width:100%;" onclick="window.open('https://search.naver.com/search.naver?query=${encodeURIComponent(item.title)}', '_blank')">
+                네이버에서 더 알아보기
+            </button>
         </div>
     `;
 }
 
-// Global scope expose for inline onclick
-window.openNav = (type, name, lat, lng) => {
-    let url = '';
-    if (type === 'kakao') {
-        url = `https://map.kakao.com/link/to/${encodeURIComponent(name)},${lat},${lng}`;
+/**
+ * Toggle Favorite
+ */
+function toggleFavorite(id, element) {
+    const index = favoriteIds.indexOf(id);
+    if (index > -1) {
+        favoriteIds.splice(index, 1);
+        element.classList.remove('active');
+        element.innerText = '🤍';
     } else {
-        url = `https://map.naver.com/v5/search/${encodeURIComponent(name)}/place/${lat},${lng}`;
+        favoriteIds.push(id);
+        element.classList.add('active');
+        element.innerText = '❤️';
     }
-    window.open(url, '_blank');
-};
-
-// Helper Functions
-function showLoading(show) {
-    if (loading) loading.style.display = show ? 'flex' : 'none';
+    saveFavorites();
 }
 
-function formatDate(dateStr) {
-    if (!dateStr || dateStr.length !== 8) return dateStr;
-    return `${dateStr.substring(0, 4)}.${dateStr.substring(4, 6)}.${dateStr.substring(6, 8)}`;
-}
-
-function cleanText(html) {
-    if (!html) return '';
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    return doc.body.textContent || "";
-}
-
-function getWeatherIcon(pty) {
-    if (pty === '0') return '☀️'; 
-    if (pty === '1') return '🌧️'; 
-    if (pty === '2') return '🌨️'; 
-    if (pty === '3') return '❄️'; 
-    return '⛅';
-}
+// --- Bootstrap ---
+window.onload = initializeApp;
+window.hideBottomSheet = hideBottomSheet; // Expose for inline onclick

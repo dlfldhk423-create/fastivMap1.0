@@ -1,0 +1,9 @@
+{
+  "appName": "anthony-gil",
+  "permissions": [
+    {
+      "name": "geolocation",
+      "access": "access"
+    }
+  ]
+}
