@@ -305,7 +305,8 @@ async function showDetail(contentId) {
 
     try {
         // detailCommon2와 detailIntro2를 병렬로 호출하여 정보 획득
-        const commonUrl = `${TOUR_BASE_URL}/detailCommon2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}&overviewYN=Y&addrinfoYN=Y&defaultYN=Y&firstImageYN=Y`;
+        // 주의: 이 환경의 detailCommon2는 addrinfoYN 등 파라미터 포함 시 에러가 발생하므로 제외합니다.
+        const commonUrl = `${TOUR_BASE_URL}/detailCommon2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}`;
         const introUrl = `${TOUR_BASE_URL}/detailIntro2?serviceKey=${API_KEY}&MobileOS=ETC&MobileApp=TossFestival&_type=json&contentId=${contentId}&contentTypeId=15`;
         
         const [commonRes, introRes] = await Promise.all([
